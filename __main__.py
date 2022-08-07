@@ -9,19 +9,26 @@ import time
 import feedparser
 import requests
 
-def classify_text(_nlc_api_key, _nlc_id,_text_to_classify):
-	classify_url = "https://api.us-south.natural-language-classifier.watson.cloud.ibm.com/instances/3a771996-89ff-4b54-9024-ad061ffc723c"
-	URL = classify_url + "/v1/classifiers/" + _nlc_id + "/classify"
-	params = {"text": _text_to_classify}
+# env variable for logging
+env = ""
+		
+def classify_text(nlu_url, nlu_apikey, classify_model, text):
+
+	URL = nlu_url + "/v1/analyze?version=2022-04-07"
+	headers = {"Content-Type":"application/json"}
+	data = {"text":text,
+			"features":{
+				"classifications":{
+					"model":classify_model}}}
 	result_map = {}
 	try:
-		r = requests.get(URL, auth=("apikey",_nlc_api_key), params=params)
+		r = requests.post(URL, auth=("apikey",nlu_apikey), headers=headers, json=data)
 		r.raise_for_status()
-		for class_found in r.json()["classes"]:
+		for class_found in r.json()["classifications"]:
 			result_map[class_found['class_name']] = class_found['confidence']
 		return result_map
 	except Exception as ex:
-		print("PROD ERROR GETTING NLC SCORE:", str(ex))
+		print("*** " + env + " ERROR GETTING NLC SCORE:", str(ex))
 		raise
 	
 
@@ -47,7 +54,7 @@ def translate_text(url, translate_apikey, language, text):
 		r.raise_for_status()
 		return r.json()["translations"][0]["text"]
 	except Exception as e:
-		print("PROD ERROR TRANSLATING TEXT", e)
+		print("*** " + env + " ERROR TRANSLATING TEXT", e)
 		return ""
 
 
@@ -60,7 +67,7 @@ def get_UTC_time(_date):
 
 # @DEV: Uses the feedparser library to extract all article URLs from an XML feed and return as a list.
 # @PARAM: _feed_list is a list of feeds to parse.
-def parse_feed(_nlc_api_key,_nlc_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, _feed_list=[]):
+def parse_feed(_nlu_url,_nlu_api_key,_classify_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, _feed_list=[]):
 	article_map = {}
 	today = datetime.now()
 	today_utc = today.replace(tzinfo = timezone.utc)
@@ -96,30 +103,33 @@ def parse_feed(_nlc_api_key,_nlc_id, _todays_date_pretty, _todays_date_struct, _
 					
 					# Skip already ingested articles
 					skip = False
+					print("*** " + env + " CHECKING FEED AGAINST ALREADY INGESTED: ", feed['feed_name'], " NUMBER:", len(_already_ingested[feed['feed_name']]))
 					for ingested_article in _already_ingested[feed['feed_name']]:
 						if strip_characters(article_title.lower()) == strip_characters(ingested_article['article_title'].lower()):
+							#print("*** " + env + " SKIPPING ITEM VS DB: ", item.title, " VS ", ingested_article['article_title'])
 							skip = True
 							break
 					if skip:
-						print("*** PROD SKIPPING ARTICLE USING DB: ", article_title, "FEED:", feed['feed_url'])
+						print("*** " + env + " SKIPPING ARTICLE USING DB: ", article_title, " FEED:", feed['feed_url'])
 						continue
 				else:
-					print("*** PROD SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, "FEED:", feed['feed_url'])
+					print("*** " + env + " SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, " FEED:", feed['feed_url'])
 					continue
 			else:
+				print("*** " + env + " NOT USING DB")
 				# Ensure Publish date is within 24 hours (past or future) of now, otherwise skip
 				if (hasattr(item, 'published') and (get_UTC_time(item.published) < yesterday_utc_milli or get_UTC_time(item.published) > tomorrow_utc_milli)) or not hasattr(item, 'published'):
-					print("*** PROD SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, "FEED:", feed['feed_url'])
+					print("*** " + env + " SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, "FEED:", feed['feed_url'])
 					continue
 				if (hasattr(item, 'published') and (get_UTC_time(feed['last_updated_date']) > get_UTC_time(item.published))) or not hasattr(item, 'published'):
-					print("*** PROD SKIPPING ARTICLE USING TIME: ", article_title, "FEED:", feed['feed_url'])
+					print("*** " + env + " SKIPPING ARTICLE USING TIME: ", article_title, "FEED:", feed['feed_url'])
 					continue
-					
+				
 				# Translate Title
 				article_title = translate_text(translate_url, translate_apikey, language, article_title)
 				if article_title == "":
 					continue
-					
+				
 			#find a file name
 			split_url = item.link.split('/')
 			counter = -1
@@ -128,15 +138,15 @@ def parse_feed(_nlc_api_key,_nlc_id, _todays_date_pretty, _todays_date_struct, _
 				counter -= 1
 				file_name = split_url[counter]
 
-			if filter_by_title(file_name, True):  
-				class_map = classify_text(_nlc_api_key, _nlc_id, article_title)
+			if filter_by_title(file_name, True):
+				class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
 				negative_classifier = class_map['NEGATIVE']
 				lead_classifier = class_map['LEAD']
 
 				if not hasattr(item, 'published') or (hasattr(item, 'published') and get_UTC_time(item.published) > today_utc_milli):
 					article_map[file_name] = {
 						"metadata": {
-							"url":item.link,  
+							"url":item.link,
 							"pub_date": today_utc_milli,
 							"language": language,
 							"title":article_title, 
@@ -195,8 +205,7 @@ def get_ingested_articles(feed_list, url, apikey):
 			r.raise_for_status()
 			ingested_articles[feed['feed_name']] = r.json()
 		except Exception as ex:
-			print("*** PROD ERROR USING SQL DB ***")
-			print(ex)
+			print("*** " + env + " ERROR USING SQL DB ***")
 			return False, {}
 	return True, ingested_articles
 	
@@ -207,7 +216,9 @@ def strip_characters(title):
 
 
 def main(_param_dictionary):
-
+	global env
+	env = _param_dictionary['env']
+	
 	# We will use today's date as the pub_date
 	todays_date_struct = time.strptime(datetime.today().strftime('%a, %d %b %Y'),'%a, %d %b %Y')
 	todays_date_pretty = time.strftime('%a, %d %b %Y', todays_date_struct)
@@ -217,12 +228,13 @@ def main(_param_dictionary):
 	else:
 		use_sql = False
 		already_ingested = {}
-	#print("*** PROD **** ALREADY INGESTED ARTICLES", already_ingested)
+	#print("**** " + env + " **** ALREADY INGESTED ARTICLES", already_ingested)
 	
 	
 	parsed_feed_map = parse_feed(
-		_nlc_api_key = _param_dictionary['nlc_api_key'],
-		_nlc_id = _param_dictionary['nlc_id'],
+		_nlu_url = _param_dictionary['sentiment_url'],
+		_nlu_api_key = _param_dictionary['sentiment_apikey'],
+		_classify_id = _param_dictionary['nlc_id'],
 		_feed_list=_param_dictionary['feed_list'],     
 		_todays_date_struct = todays_date_struct,
 		_todays_date_pretty = todays_date_pretty,
@@ -248,5 +260,6 @@ def main(_param_dictionary):
 	'sentiment_model': _param_dictionary['sentiment_model'],
 	'translate_url': _param_dictionary["translate_url"],
 	'translate_apikey': _param_dictionary["translate_apikey"],
-	'parsed_feed': parsed_feed
+	'parsed_feed': parsed_feed,
+	'env': _param_dictionary["env"]
 	}
