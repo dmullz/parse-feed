@@ -67,7 +67,7 @@ def get_UTC_time(_date):
 
 # @DEV: Uses the feedparser library to extract all article URLs from an XML feed and return as a list.
 # @PARAM: _feed_list is a list of feeds to parse.
-def parse_feed(_nlu_url,_nlu_api_key,_classify_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, _feed_list=[]):
+def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, _feed_list=[]):
 	article_map = {}
 	today = datetime.now()
 	today_utc = today.replace(tzinfo = timezone.utc)
@@ -139,7 +139,13 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id, _todays_date_pretty, _todays_
 				file_name = split_url[counter]
 
 			if filter_by_title(file_name, True):
-				class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
+				
+				class_map = {}
+				if "Dow Jones" in feed['publisher']:
+					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+				else:
+					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
+					
 				negative_classifier = class_map['NEGATIVE']
 				lead_classifier = class_map['LEAD']
 
@@ -235,6 +241,7 @@ def main(_param_dictionary):
 		_nlu_url = _param_dictionary['sentiment_url'],
 		_nlu_api_key = _param_dictionary['sentiment_apikey'],
 		_classify_id = _param_dictionary['nlc_id'],
+		_financial_classify_id = _param_dictionary['financial_classify_id'],
 		_feed_list=_param_dictionary['feed_list'],     
 		_todays_date_struct = todays_date_struct,
 		_todays_date_pretty = todays_date_pretty,
