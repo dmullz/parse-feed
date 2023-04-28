@@ -214,7 +214,7 @@ def get_ingested_articles(feed_list, url, apikey):
 	for feed in feed_list:
 		params = {"apikey": apikey, "ingestdate": past_day_utc_formatted, "magazine": feed['feed_name']}
 		try:
-			r = requests.get(url + 'v1/get-article-by-ingestdate-magazine', params=params)
+			r = requests.get(url + 'v2/get-article-by-ingestdate-magazine', params=params)
 			r.raise_for_status()
 			ingested_articles[feed['feed_name']] = r.json()
 		except Exception as ex:
