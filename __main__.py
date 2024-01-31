@@ -198,6 +198,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					
 				if "Dow Jones" in feed['publisher']:
 					article_map[file_name]["metadata"]["article_text"] = item.content[0].value
+					if "advisor/articles" in item.link:
+						article_map[file_name]["metadata"]["lead_classifier"] = 1.0
 				
 				if "Engadget" in feed['feed_name']:
 					article_map[file_name]["metadata"]["article_text"] = item.description
