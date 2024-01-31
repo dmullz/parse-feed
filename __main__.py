@@ -297,21 +297,37 @@ def main(_param_dictionary):
 		)
 
 	parsed_feed = parsed_feed_map['article_map']
+	
+	URL = _param_dictionary["download_upload_url"]
+	headers = {"Content-Type":"application/json"}
+	data = {
+		'discovery_version': _param_dictionary['discovery_version'],
+		'discovery_url': _param_dictionary['discovery_url'],
+		'discovery_api_key': _param_dictionary['discovery_api_key'],
+		'collection_id': _param_dictionary['collection_id'],
+		'environment_id': _param_dictionary['environment_id'],
+		'sql_db_url':_param_dictionary['sql_db_url'],
+		'sql_db_apikey': _param_dictionary['sql_db_apikey'],
+		'sql_db_enabled': _param_dictionary['sql_db_enabled'],
+		'sentiment_url': _param_dictionary['sentiment_url'],
+		'sentiment_apikey': _param_dictionary['sentiment_apikey'],
+		'sentiment_model': _param_dictionary['sentiment_model'],
+		'translate_url': _param_dictionary["translate_url"],
+		'translate_apikey': _param_dictionary["translate_apikey"],
+		'parsed_feed': parsed_feed,
+		'env': _param_dictionary["env"]
+	}
+	try:
+		r = requests.post(URL, headers=headers, json=data)
+		r.raise_for_status()
+	except Exception as ex:
+		print("*** " + env + " ERROR CALLING DOWNLOAD-UPLOAD", str(ex))
+
 
 	return {
-	'discovery_version': _param_dictionary['discovery_version'],
-	'discovery_url': _param_dictionary['discovery_url'],
-	'discovery_api_key': _param_dictionary['discovery_api_key'],
-	'collection_id': _param_dictionary['collection_id'],
-	'environment_id': _param_dictionary['environment_id'],
-	'sql_db_url':_param_dictionary['sql_db_url'],
-	'sql_db_apikey': _param_dictionary['sql_db_apikey'],
-	'sql_db_enabled': _param_dictionary['sql_db_enabled'],
-	'sentiment_url': _param_dictionary['sentiment_url'],
-	'sentiment_apikey': _param_dictionary['sentiment_apikey'],
-	'sentiment_model': _param_dictionary['sentiment_model'],
-	'translate_url': _param_dictionary["translate_url"],
-	'translate_apikey': _param_dictionary["translate_apikey"],
-	'parsed_feed': parsed_feed,
-	'env': _param_dictionary["env"]
+		"headers": {
+			"Content-Type": "application/json",
+		},
+		"statusCode": 200,
+		"body": parsed_feed,
 	}
