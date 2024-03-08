@@ -82,7 +82,12 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 	today_utc_milli = int(today_utc.timestamp() * 1000)
 
 	for feed in _feed_list:
-		data = feedparser.parse(feed['feed_url'])
+		data = None
+		try:
+			data = feedparser.parse(feed['feed_url'])
+		except Exception as ex:
+			print("*** " + env + " ERROR PARSING FEED: " + feed['feed_name'] + " FROM URL: " + feed['feed_url'], str(ex))
+			continue
 		article_count = 0
 		for item in data.entries:
 			yesterday = datetime.now() - timedelta(days = 3)
@@ -159,6 +164,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 						continue
 					else:
 						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+				elif "Arena Group" in feed['publisher'] and "TheStreet" in feed['feed_name']:
+					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
 				else:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
 				
@@ -253,7 +260,7 @@ def get_ingested_articles(feed_list, url, apikey):
 			r.raise_for_status()
 			ingested_articles[feed['feed_name']] = r.json()
 		except Exception as ex:
-			print("*** " + env + " ERROR USING SQL DB ***")
+			print("*** " + env + "*** ERROR USING SQL DB: ", str(ex))
 			return False, {}
 	return True, ingested_articles
 	

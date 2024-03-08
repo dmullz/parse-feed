@@ -14,360 +14,489 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import os
-from os.path import dirname, isfile, join, expanduser, abspath, basename
-import platform
+import gzip
+import io
 import json as json_import
-import sys
+import logging
+import platform
+from http.cookiejar import CookieJar
+from os.path import basename
+from typing import Dict, List, Optional, Tuple, Union
+from urllib3.util.retry import Retry
+
 import requests
 from requests.structures import CaseInsensitiveDict
-from .version import __version__
-from .utils import has_bad_first_or_last_char, remove_null_values, cleanup_values
-from .iam_token_manager import IAMTokenManager
-from .detailed_response import DetailedResponse
-from .api_exception import ApiException
+from requests.exceptions import JSONDecodeError
 
-try:
-    from http.cookiejar import CookieJar  # Python 3
-except ImportError:
-    from cookielib import CookieJar  # Python 2
+from ibm_cloud_sdk_core.authenticators import Authenticator
+from .api_exception import ApiException
+from .detailed_response import DetailedResponse
+from .token_managers.token_manager import TokenManager
+from .utils import (
+    has_bad_first_or_last_char,
+    is_json_mimetype,
+    remove_null_values,
+    cleanup_values,
+    read_external_sources,
+    strip_extra_slashes,
+    SSLHTTPAdapter,
+    GzipStream,
+)
+from .version import __version__
 
 # Uncomment this to enable http debugging
-# try:
-#    import http.client as http_client
-# except ImportError:
-#    # Python 2
-#    import httplib as http_client
+# import http.client as http_client
 # http_client.HTTPConnection.debuglevel = 1
 
-class BaseService(object):
-    BEARER = 'Bearer'
-    ICP_PREFIX = 'icp-'
-    APIKEY = 'apikey'
-    IAM_ACCESS_TOKEN = 'iam_access_token'
-    URL = 'url'
-    USERNAME = 'username'
-    PASSWORD = 'password'
-    IAM_APIKEY = 'iam_apikey'
-    IAM_URL = 'iam_url'
-    APIKEY_DEPRECATION_MESSAGE = 'Authenticating with apikey is deprecated. Move to using Identity and Access Management (IAM) authentication.'
-    DEFAULT_CREDENTIALS_FILE_NAME = 'ibm-credentials.env'
+
+logger = logging.getLogger(__name__)
+
+
+# pylint: disable=too-many-instance-attributes
+# pylint: disable=too-many-locals
+class BaseService:
+    """Common functionality shared by generated service classes.
+
+    The base service authenticates requests via its authenticator, stores cookies, and
+    wraps responses from the service endpoint in DetailedResponse or APIException objects.
+
+    Keyword Arguments:
+        service_url: Url to the service endpoint. Defaults to None.
+        authenticator: Adds authentication data to service requests. Defaults to None.
+        disable_ssl_verification: A flag that indicates whether verification of the server's SSL
+            certificate should be disabled or not. Defaults to False.
+        enable_gzip_compression: A flag that indicates whether to enable gzip compression on request bodies
+
+    Attributes:
+        service_url (str): Url to the service endpoint.
+        authenticator (Authenticator): Adds authentication data to service requests.
+        disable_ssl_verification (bool): A flag that indicates whether verification of
+            the server's SSL certificate should be disabled or not.
+        default_headers (dict): A dictionary of headers to be sent with every HTTP request to the service endpoint.
+        jar (http.cookiejar.CookieJar): Stores cookies received from the service.
+        http_config (dict): A dictionary containing values that control the timeout, proxies, and etc of HTTP requests.
+        http_client (Session): A configurable session which can use Transport Adapters to configure retries, timeouts,
+            proxies, etc. globally for all requests.
+        enable_gzip_compression (bool): A flag that indicates whether to enable gzip compression on request bodies
+    Raises:
+        ValueError: If Authenticator is not provided or invalid type.
+    """
+
     SDK_NAME = 'ibm-python-sdk-core'
+    ERROR_MSG_DISABLE_SSL = (
+        'The connection failed because the SSL certificate is not valid. To use a self-signed '
+        'certificate, disable verification of the server\'s SSL certificate by invoking the '
+        'set_disable_ssl_verification(True) on your service instance and/ or use the '
+        'disable_ssl_verification option of the authenticator.'
+    )
 
-    def __init__(self, vcap_services_name, url, username=None, password=None,
-                 use_vcap_services=True, api_key=None,
-                 iam_apikey=None, iam_access_token=None, iam_url=None,
-                 display_name=None):
-        """
-        It loads credentials with the following preference:
-        1) Credentials explicitly set in the request
-        2) Credentials loaded from credentials file if present
-        3) Credentials loaded from VCAP_SERVICES environment variable if available and use_vcap_services is True
-        """
-        self.url = url
+    def __init__(
+        self,
+        *,
+        service_url: str = None,
+        authenticator: Authenticator = None,
+        disable_ssl_verification: bool = False,
+        enable_gzip_compression: bool = False
+    ) -> None:
+        self.set_service_url(service_url)
+        self.http_client = requests.Session()
         self.http_config = {}
-        self.jar = None
-        self.api_key = None
-        self.username = None
-        self.password = None
+        self.jar = CookieJar()
+        self.authenticator = authenticator
+        self.disable_ssl_verification = disable_ssl_verification
         self.default_headers = None
-        self.iam_apikey = None
-        self.iam_access_token = None
-        self.iam_url = None
-        self.token_manager = None
-        self.verify = None # Indicates whether to ignore verifying the SSL certification
+        self.enable_gzip_compression = enable_gzip_compression
+        self._set_user_agent_header(self._build_user_agent())
+        self.retry_config = None
+        self.http_adapter = SSLHTTPAdapter(_disable_ssl_verification=self.disable_ssl_verification)
+        if not self.authenticator:
+            raise ValueError('authenticator must be provided')
+        if not isinstance(self.authenticator, Authenticator):
+            raise ValueError('authenticator should be of type Authenticator')
 
-        if has_bad_first_or_last_char(self.url):
-            raise ValueError('The URL shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your URL')
+        self.http_client.mount('http://', self.http_adapter)
+        self.http_client.mount('https://', self.http_adapter)
 
-        self.set_user_agent_header(self.build_user_agent())
+    def enable_retries(self, max_retries: int = 4, retry_interval: float = 30.0) -> None:
+        """Enable automatic retries on the underlying http client used by the BaseService instance.
 
-        # 1. Credentials are passed in constructor
-        if api_key is not None:
-            if api_key.startswith(self.ICP_PREFIX):
-                self.set_username_and_password(self.APIKEY, api_key)
-            else:
-                self.set_token_manager(api_key, iam_access_token, iam_url)
-        elif username is not None and password is not None:
-            if username is self.APIKEY and not password.startswith(self.ICP_PREFIX):
-                self.set_token_manager(password, iam_access_token, iam_url)
-            else:
-                self.set_username_and_password(username, password)
-        elif iam_access_token is not None or iam_apikey is not None:
-            if iam_apikey and iam_apikey.startswith(self.ICP_PREFIX):
-                self.set_username_and_password(self.APIKEY, iam_apikey)
-            else:
-                self.set_token_manager(iam_apikey, iam_access_token, iam_url)
+        Args:
+          max_retries: the maximum number of retries to attempt for a failed retryable request
+          retry_interval: the maximum wait time (in seconds) to use for retry attempts.
+            In general, if a response includes the Retry-After header, that will be used for
+            the wait time associated with the retry attempt.  If the Retry-After header is not
+            present, then the wait time is based on an exponential backoff policy with a maximum
+            backoff time of "retry_interval".
+        """
+        self.retry_config = Retry(
+            total=max_retries,
+            backoff_factor=1.0,
+            backoff_max=retry_interval,
+            # List of HTTP status codes to retry on in addition to Timeout/Connection Errors
+            status_forcelist=[429, 500, 502, 503, 504],
+            # List of HTTP methods to retry on
+            # Omitting this will default to all methods except POST
+            allowed_methods=['HEAD', 'GET', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'POST'],
+        )
+        self.http_adapter = SSLHTTPAdapter(
+            max_retries=self.retry_config, _disable_ssl_verification=self.disable_ssl_verification
+        )
+        self.http_client.mount('http://', self.http_adapter)
+        self.http_client.mount('https://', self.http_adapter)
 
-        # 2. Credentials from credential file
-        if display_name and not self.username and not self.token_manager:
-            service_name = display_name.replace(' ', '_').lower()
-            self._load_from_credential_file(service_name)
+    def disable_retries(self):
+        """Remove retry config from http_adapter"""
+        self.retry_config = None
+        self.http_adapter = SSLHTTPAdapter(_disable_ssl_verification=self.disable_ssl_verification)
+        self.http_client.mount('http://', self.http_adapter)
+        self.http_client.mount('https://', self.http_adapter)
 
-        # 3. Credentials from VCAP
-        if use_vcap_services and not self.username and not self.token_manager:
-            self.vcap_service_credentials = self._load_from_vcap_services(
-                vcap_services_name)
-            if self.vcap_service_credentials is not None and isinstance(
-                    self.vcap_service_credentials, dict):
-                self.url = self.vcap_service_credentials[self.URL]
-                if self.USERNAME in self.vcap_service_credentials:
-                    self.username = self.vcap_service_credentials.get(self.USERNAME)
-                if self.PASSWORD in self.vcap_service_credentials:
-                    self.password = self.vcap_service_credentials.get(self.PASSWORD)
-                if self.APIKEY in self.vcap_service_credentials:
-                    self.set_iam_apikey(self.vcap_service_credentials.get(self.APIKEY))
-                if self.IAM_APIKEY in self.vcap_service_credentials:
-                    self.set_iam_apikey(self.vcap_service_credentials.get(self.IAM_APIKEY))
-                if self.IAM_ACCESS_TOKEN in self.vcap_service_credentials:
-                    self.set_iam_access_token(self.vcap_service_credentials.get(self.IAM_ACCESS_TOKEN))
+    @staticmethod
+    def _get_system_info() -> str:
+        return '{0} {1} {2}'.format(
+            platform.system(), platform.release(), platform.python_version()  # OS  # OS version  # Python version
+        )
 
-        if (self.username is None or self.password is None) and self.token_manager is None:
+    def _build_user_agent(self) -> str:
+        return '{0}-{1} {2}'.format(self.SDK_NAME, __version__, self._get_system_info())
+
+    def configure_service(self, service_name: str) -> None:
+        """Look for external configuration of a service. Set service properties.
+
+        Try to get config from external sources, with the following priority:
+        1. Credentials file(ibm-credentials.env)
+        2. Environment variables
+        3. VCAP Services(Cloud Foundry)
+
+        Args:
+            service_name: The service name
+
+        Raises:
+            ValueError: If service_name is not a string.
+        """
+        if not isinstance(service_name, str):
+            raise ValueError('Service_name must be of type string.')
+
+        config = read_external_sources(service_name)
+        if config.get('URL'):
+            self.set_service_url(config.get('URL'))
+        if config.get('DISABLE_SSL'):
+            self.set_disable_ssl_verification(config.get('DISABLE_SSL').lower() == 'true')
+        if config.get('ENABLE_GZIP'):
+            self.set_enable_gzip_compression(config.get('ENABLE_GZIP').lower() == 'true')
+        if config.get('ENABLE_RETRIES'):
+            if config.get('ENABLE_RETRIES').lower() == 'true':
+                kwargs = {}
+                if config.get('MAX_RETRIES'):
+                    kwargs["max_retries"] = int(config.get('MAX_RETRIES'))
+                if config.get('RETRY_INTERVAL'):
+                    kwargs["retry_interval"] = float(config.get('RETRY_INTERVAL'))
+                self.enable_retries(**kwargs)
+
+    def _set_user_agent_header(self, user_agent_string: str) -> None:
+        self.user_agent_header = {'User-Agent': user_agent_string}
+
+    def set_http_config(self, http_config: dict) -> None:
+        """Sets the http config dictionary.
+
+        The dictionary can contain values that control the timeout, proxies, and etc of HTTP requests.
+
+        Arguments:
+            http_config: Configuration values to customize HTTP behaviors.
+
+        Raises:
+            TypeError: http_config is not a dict.
+        """
+        if isinstance(http_config, dict):
+            self.http_config = http_config
+            if (
+                self.authenticator
+                and hasattr(self.authenticator, 'token_manager')
+                and isinstance(self.authenticator.token_manager, TokenManager)
+            ):
+                self.authenticator.token_manager.http_config = http_config
+        else:
+            raise TypeError("http_config parameter must be a dictionary")
+
+    def set_disable_ssl_verification(self, status: bool = False) -> None:
+        """Set the flag that indicates whether verification of
+        the server's SSL certificate should be disabled or not.
+
+        Keyword Arguments:
+            status: set to true to disable ssl verification (default: {False})
+        """
+        if self.disable_ssl_verification == status:
+            # Do nothing if the state doesn't change.
+            return
+
+        self.disable_ssl_verification = status
+
+        self.http_adapter = SSLHTTPAdapter(
+            max_retries=self.retry_config, _disable_ssl_verification=self.disable_ssl_verification
+        )
+        self.http_client.mount('http://', self.http_adapter)
+        self.http_client.mount('https://', self.http_adapter)
+
+    def set_service_url(self, service_url: str) -> None:
+        """Set the url the service will make HTTP requests too.
+
+        Arguments:
+            service_url: The WHATWG URL standard origin ex. https://example.service.com
+
+        Raises:
+            ValueError: Improperly formatted service_url
+        """
+        if has_bad_first_or_last_char(service_url):
             raise ValueError(
-                'You must specify your IAM api key or username and password service '
-                'credentials (Note: these are different from your Bluemix id)')
+                'The service url shouldn\'t start or end with curly brackets or quotes. '
+                'Be sure to remove any {} and \" characters surrounding your service url'
+            )
+        if service_url is not None:
+            service_url = service_url.rstrip('/')
+        self.service_url = service_url
 
-    def _load_from_credential_file(self, service_name, separator='='):
+    def get_http_client(self) -> requests.sessions.Session:
+        """Get the http client session currently used by the service.
+
+        Returns:
+            The http client session currently used by the service.
         """
-        Initiates the credentials based on the credential file
+        return self.http_client
 
-        :param str service_name: The service name
-        :param str separator: the separator for key value pair
+    def set_http_client(self, http_client: requests.sessions.Session) -> None:
+        """Set current http client session
+
+        Arguments:
+            http_client: A new requests session client
         """
-        # File path specified by an env variable
-        credential_file_path = os.getenv('IBM_CREDENTIALS_FILE')
-
-        # Home directory
-        if credential_file_path is None:
-            file_path = join(expanduser('~'), self.DEFAULT_CREDENTIALS_FILE_NAME)
-            if isfile(file_path):
-                credential_file_path = file_path
-
-        # Top-level of the project directory
-        if credential_file_path is None:
-            file_path = join(dirname(dirname(abspath(__file__))), self.DEFAULT_CREDENTIALS_FILE_NAME)
-            if isfile(file_path):
-                credential_file_path = file_path
-
-        if credential_file_path is not None:
-            with open(credential_file_path, 'r') as fp:
-                for line in fp:
-                    key_val = line.strip().split(separator)
-                    if len(key_val) == 2:
-                        self._set_credential_based_on_type(service_name, key_val[0].lower(), key_val[1])
-
-    def _set_credential_based_on_type(self, service_name, key, value):
-        if service_name in key:
-            if self.APIKEY in key:
-                self.set_iam_apikey(value)
-            elif self.URL in key:
-                self.set_url(value)
-            elif self.USERNAME in key:
-                self.username = value
-            elif self.PASSWORD in key:
-                self.password = value
-            elif self.IAM_APIKEY in key:
-                self.set_iam_apikey(value)
-            elif self.IAM_URL in key:
-                self.set_iam_url(value)
-
-    def _load_from_vcap_services(self, service_name):
-        vcap_services = os.getenv('VCAP_SERVICES')
-        if vcap_services is not None:
-            services = json_import.loads(vcap_services)
-            if service_name in services:
-                return services[service_name][0]['credentials']
+        if isinstance(http_client, requests.sessions.Session):
+            self.http_client = http_client
         else:
-            return None
+            raise TypeError("http_client parameter must be a requests.sessions.Session")
 
-    def disable_SSL_verification(self):
-        self.verify = False
+    def get_authenticator(self) -> Authenticator:
+        """Get the authenticator currently used by the service.
 
-    def set_username_and_password(self, username, password):
-        if has_bad_first_or_last_char(username):
-            raise ValueError('The username shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your username')
-        if has_bad_first_or_last_char(password):
-            raise ValueError('The password shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your password')
-
-        self.username = username
-        self.password = password
-        self.jar = CookieJar()
-
-    def set_token_manager(self, iam_apikey=None, iam_access_token=None, iam_url=None):
-        if has_bad_first_or_last_char(iam_apikey):
-            raise ValueError('The credentials shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your credentials')
-
-        self.token_manager = IAMTokenManager(iam_apikey, iam_access_token, iam_url)
-        self.iam_apikey = iam_apikey
-        self.iam_access_token = iam_access_token
-        self.iam_url = iam_url
-        self.jar = CookieJar()
-
-    def set_iam_access_token(self, iam_access_token):
-        if self.token_manager:
-            self.token_manager.set_access_token(iam_access_token)
-        else:
-            self.token_manager = IAMTokenManager(iam_access_token=iam_access_token)
-        self.iam_access_token = iam_access_token
-        self.jar = CookieJar()
-
-    def set_iam_url(self, iam_url):
-        if self.token_manager:
-            self.token_manager.set_iam_url(iam_url)
-        else:
-            self.token_manager = IAMTokenManager(iam_url=iam_url)
-        self.iam_url = iam_url
-        self.jar = CookieJar()
-
-    def set_iam_apikey(self, iam_apikey):
-        if has_bad_first_or_last_char(iam_apikey):
-            raise ValueError('The credentials shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your credentials')
-        if self.token_manager:
-            self.token_manager.set_iam_apikey(iam_apikey)
-        else:
-            self.token_manager = IAMTokenManager(iam_apikey=iam_apikey)
-        self.iam_apikey = iam_apikey
-        self.jar = CookieJar()
-
-    def set_url(self, url):
-        if has_bad_first_or_last_char(url):
-            raise ValueError('The URL shouldn\'t start or end with curly brackets or quotes. '
-                             'Be sure to remove any {} and \" characters surrounding your URL')
-        self.url = url
-
-    def set_default_headers(self, headers):
+        Returns:
+            The authenticator currently used by the service.
         """
-        Set http headers to be sent in every request.
-        :param headers: A dictionary of header names and values
+        return self.authenticator
+
+    def set_default_headers(self, headers: Dict[str, str]) -> None:
+        """Set http headers to be sent in every request.
+
+        Arguments:
+            headers: A dictionary of headers
         """
         if isinstance(headers, dict):
             self.default_headers = headers
         else:
             raise TypeError("headers parameter must be a dictionary")
 
-    def get_system_info(self):
-        return '{0} {1} {2}'.format(platform.system(), # OS
-                                    platform.release(), # OS version
-                                    platform.python_version()) # Python version
+    def send(self, request: requests.Request, **kwargs) -> DetailedResponse:
+        """Send a request and wrap the response in a DetailedResponse or APIException.
 
-    def build_user_agent(self):
-        return '{0}-{1} {2}'.format(self.SDK_NAME, __version__, self.get_system_info())
+        Args:
+            request: The request to send to the service endpoint.
 
-    def get_user_agent_header(self):
-        return self.user_agent_header
+        Raises:
+            ApiException: The exception from the API.
 
-    def set_user_agent_header(self, user_agent_string=None):
-        self.user_agent_header = {'User-Agent': user_agent_string}
-
-    def set_http_config(self, http_config):
+        Returns:
+            The response from the request.
         """
-        Sets the http client config like timeout, proxies, etc.
-        """
-        if isinstance(http_config, dict):
-            self.http_config = http_config
-        else:
-            raise TypeError("http_config parameter must be a dictionary")
-
-    def request(self, method, url, accept_json=False, headers=None,
-                params=None, json=None, data=None, files=None, **kwargs):
-        full_url = self.url + url
-
-        headers = remove_null_values(headers) if headers else {}
-        headers = cleanup_values(headers)
-        headers = CaseInsensitiveDict(headers)
-
-        if self.default_headers is not None:
-            headers.update(self.default_headers)
-        if accept_json:
-            headers['accept'] = 'application/json'
-
-        if not any(key in headers for key in ['user-agent', 'User-Agent']):
-            headers.update(self.user_agent_header)
-
-        # Remove keys with None values
-        params = remove_null_values(params)
-        params = cleanup_values(params)
-        json = remove_null_values(json)
-        data = remove_null_values(data)
-        files = remove_null_values(files)
-
-        if sys.version_info >= (3, 0) and isinstance(data, str):
-            data = data.encode('utf-8')
-
-        # Support versions of requests older than 2.4.2 without the json input
-        if not data and json is not None:
-            data = json_import.dumps(json)
-            headers.update({'content-type': 'application/json'})
-
-        auth = None
-        if self.token_manager:
-            access_token = self.token_manager.get_token()
-            headers['Authorization'] = '{0} {1}'.format(self.BEARER, access_token)
-        if self.username and self.password:
-            auth = (self.username, self.password)
-
         # Use a one minute timeout when our caller doesn't give a timeout.
         # http://docs.python-requests.org/en/master/user/quickstart/#timeouts
         kwargs = dict({"timeout": 60}, **kwargs)
         kwargs = dict(kwargs, **self.http_config)
 
-        if self.verify is not None:
-            kwargs['verify'] = self.verify
+        if self.disable_ssl_verification:
+            kwargs['verify'] = False
 
+        # Check to see if the caller specified the 'stream' argument.
+        stream_response = kwargs.get('stream') or False
+
+        # Remove the keys we set manually, don't let the user to overwrite these.
+        reserved_keys = ['method', 'url', 'headers', 'params', 'cookies']
+        silent_keys = ['headers']
+        for key in reserved_keys:
+            if key in kwargs:
+                del kwargs[key]
+                if key not in silent_keys:
+                    logger.warning('"%s" has been removed from the request', key)
+        try:
+            response = self.http_client.request(**request, cookies=self.jar, **kwargs)
+
+            # Process a "success" response.
+            if 200 <= response.status_code <= 299:
+                if response.status_code == 204 or request['method'] == 'HEAD':
+                    # There is no body content for a HEAD response or a 204 response.
+                    result = None
+                elif stream_response:
+                    result = response
+                elif not response.text:
+                    result = None
+                elif is_json_mimetype(response.headers.get('Content-Type')):
+                    # If this is a JSON response, then try to unmarshal it.
+                    try:
+                        result = response.json(strict=False)
+                    except JSONDecodeError as err:
+                        raise ApiException(
+                            code=response.status_code,
+                            http_response=response,
+                            message='Error processing the HTTP response',
+                        ) from err
+                else:
+                    # Non-JSON response, just use response body as-is.
+                    result = response
+
+                return DetailedResponse(response=result, headers=response.headers, status_code=response.status_code)
+
+            # Received error status code from server, raise an APIException.
+            raise ApiException(response.status_code, http_response=response)
+        except requests.exceptions.SSLError:
+            logger.exception(self.ERROR_MSG_DISABLE_SSL)
+            raise
+
+    def set_enable_gzip_compression(self, should_enable_compression: bool = False) -> None:
+        """Set value to enable gzip compression on request bodies"""
+        self.enable_gzip_compression = should_enable_compression
+
+    def get_enable_gzip_compression(self) -> bool:
+        """Get value for enabling gzip compression on request bodies"""
+        return self.enable_gzip_compression
+
+    def prepare_request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Optional[dict] = None,
+        params: Optional[dict] = None,
+        data: Optional[Union[str, dict]] = None,
+        files: Optional[Union[Dict[str, Tuple[str]], List[Tuple[str, Tuple[str, ...]]]]] = None,
+        **kwargs
+    ) -> dict:
+        """Build a dict that represents an HTTP service request.
+
+        Clean up headers, add default http configuration, convert data
+        into json, process files, and merge all into a single request dict.
+
+        Args:
+            method: The HTTP method of the request ex. GET, POST, etc.
+            url: The origin + pathname according to WHATWG spec.
+
+        Keyword Arguments:
+            headers: Headers of the request.
+            params: Querystring data to be appended to the url.
+            data: The request body. Converted to json if a dict.
+            files: 'files' can be a dictionary (i.e { '<part-name>': (<tuple>)}),
+                or a list of tuples [ (<part-name>, (<tuple>))... ]
+
+        Returns:
+            Prepared request dictionary.
+        """
+        # pylint: disable=unused-argument; necessary for kwargs
+        request = {'method': method}
+
+        # validate the service url is set
+        if not self.service_url:
+            raise ValueError('The service_url is required')
+
+        # Combine the service_url and operation path to form the request url.
+        # Note: we have already stripped any trailing slashes from the service_url
+        # and we know that the operation path ('url') will start with a slash.
+        request['url'] = strip_extra_slashes(self.service_url + url)
+
+        headers = remove_null_values(headers) if headers else {}
+        headers = cleanup_values(headers)
+        headers = CaseInsensitiveDict(headers)
+        if self.default_headers is not None:
+            headers.update(self.default_headers)
+        if 'user-agent' not in headers:
+            headers.update(self.user_agent_header)
+        request['headers'] = headers
+
+        params = remove_null_values(params)
+        params = cleanup_values(params)
+        request['params'] = params
+
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        elif isinstance(data, dict) and data:
+            data = remove_null_values(data)
+            if headers.get('content-type') is None:
+                headers.update({'content-type': 'application/json'})
+            data = json_import.dumps(data).encode('utf-8')
+        request['data'] = data
+
+        self.authenticator.authenticate(request)
+
+        # Compress the request body if applicable
+        if self.get_enable_gzip_compression() and 'content-encoding' not in headers and request['data'] is not None:
+            headers['content-encoding'] = 'gzip'
+            request['headers'] = headers
+            # If the provided data is a file-like object, we create `GzipStream` which will handle
+            # the compression on-the-fly when the requests package starts reading its content.
+            # This helps avoid OOM errors when the opened file is too big.
+            # In any other cases, we use the in memory compression directly from
+            # the `gzip` package for backward compatibility.
+            raw_data = request['data']
+            request['data'] = GzipStream(raw_data) if isinstance(raw_data, io.IOBase) else gzip.compress(raw_data)
+
+        # Next, we need to process the 'files' argument to try to fill in
+        # any missing filenames where possible.
+        # 'files' can be a dictionary (i.e { '<part-name>': (<tuple>)} )
+        # or a list of tuples [ (<part-name>, (<tuple>))... ]
+        # If 'files' is a dictionary we'll convert it to a list of tuples.
+        new_files = []
         if files is not None:
-            for k, file_tuple in files.items():
+            # If 'files' is a dictionary, transform it into a list of tuples.
+            if isinstance(files, dict):
+                files = remove_null_values(files)
+                files = files.items()
+            # Next, fill in any missing filenames from file tuples.
+            for part_name, file_tuple in files:
                 if file_tuple and len(file_tuple) == 3 and file_tuple[0] is None:
                     file = file_tuple[1]
                     if file and hasattr(file, 'name'):
                         filename = basename(file.name)
-                        files[k] = (filename, file_tuple[1], file_tuple[2])
-
-        response = requests.request(method=method, url=full_url,
-                                    cookies=self.jar, auth=auth,
-                                    headers=headers,
-                                    params=params, data=data, files=files,
-                                    **kwargs)
-
-        if 200 <= response.status_code <= 299:
-            if response.status_code == 204 or method == 'HEAD':
-                # There is no body content for a HEAD request or a 204 response
-                return DetailedResponse(None, response.headers, response.status_code)
-            if accept_json:
-                try:
-                    response_json = response.json()
-                except:
-                    # deserialization fails because there is no text
-                    return DetailedResponse(None, response.headers, response.status_code)
-                return DetailedResponse(response_json, response.headers, response.status_code)
-            return DetailedResponse(response, response.headers, response.status_code)
-        else:
-            error_message = None
-            if response.status_code == 401:
-                error_message = 'Unauthorized: Access is denied due to ' \
-                                'invalid credentials'
-            raise ApiException(response.status_code, error_message, http_response=response)
+                        file_tuple = (filename, file_tuple[1], file_tuple[2])
+                new_files.append((part_name, file_tuple))
+        request['files'] = new_files
+        return request
 
     @staticmethod
-    def _convert_model(val, classname=None):
-        if classname is not None and not hasattr(val, "_from_dict"):
-            if isinstance(val, str):
-                val = json_import.loads(val)
-            val = classname._from_dict(dict(val))
+    def encode_path_vars(*args: str) -> List[str]:
+        """Encode path variables to be substituted into a URL path.
+
+        Arguments:
+            args: A list of strings to be URL path encoded
+
+        Returns:
+            A list of encoded strings that are safe to substitute into a URL path.
+        """
+        return (requests.utils.quote(x, safe='') for x in args)
+
+    # The methods below are kept for compatibility and should be removed
+    # in the next major release.
+
+    # pylint: disable=protected-access
+
+    @staticmethod
+    def _convert_model(val: str) -> None:
+        if isinstance(val, str):
+            val = json_import.loads(val)
         if hasattr(val, "_to_dict"):
             return val._to_dict()
         return val
 
     @staticmethod
-    def _convert_list(val):
+    def _convert_list(val: list) -> None:
         if isinstance(val, list):
             return ",".join(val)
         return val
 
     @staticmethod
-    def _encode_path_vars(*args):
+    def _encode_path_vars(*args) -> None:
         return (requests.utils.quote(x, safe='') for x in args)
