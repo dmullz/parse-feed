@@ -44,7 +44,12 @@ def translate_text(url, translate_apikey, language, text):
 		"it-IT": "IT",
 		"fr-FR": "FR",
 		"es-ES": "ES",
-		"NL": "NL"
+		"NL": "NL",
+		"nl": "NL",
+		"fr": "FR",
+		"de": "DE",
+		"it": "IT",
+		"es": "ES"
 	}
 	
 	if language not in language_mapping:
@@ -97,15 +102,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			tomorrow = datetime.now() + timedelta(days = 1)
 			tomorrow_utc = tomorrow.replace(tzinfo = timezone.utc)
 			tomorrow_utc_milli = int(tomorrow_utc.timestamp() * 1000)
-			language = "unk"
+			language = feed['language']
 			article_title = ""
-			
-			if hasattr(data["feed"], "language") and data["feed"]["language"] != "":
-				language = data["feed"]["language"]
-			if "IDG Communications Media (AG)" in feed["publisher"]:
-				language = "ger"
-			if "Netherlands" in feed["publisher"]:
-				language = "NL"
 			
 			if hasattr(item, 'title'):
 				article_title = re.sub(r'[^\w\d\s\.\,\-\']','',item.title)		
