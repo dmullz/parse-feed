@@ -91,6 +91,12 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 		data = None
 		try:
 			data = feedparser.parse(feed['feed_url'])
+			if data.status == 403:
+				raise Exception("Cannot access RSS Feed: (403 Forbidden for URL)")
+			if data.status == 401:
+				raise Exception("Cannot access RSS Feed: (401 Unauthorized)")
+			if len(data.entries) == 0:
+				raise Exception("No entries found in parsed feed")
 		except Exception as ex:
 			print("*** " + env + " ERROR PARSING FEED: " + feed['feed_name'] + " FROM URL: " + feed['feed_url'], str(ex))
 			continue
