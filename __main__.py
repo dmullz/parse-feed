@@ -44,7 +44,12 @@ def translate_text(url, translate_apikey, language, text):
 		"it-IT": "IT",
 		"fr-FR": "FR",
 		"es-ES": "ES",
-		"NL": "NL"
+		"NL": "NL",
+		"nl": "NL",
+		"fr": "FR",
+		"de": "DE",
+		"it": "IT",
+		"es": "ES"
 	}
 	
 	if language not in language_mapping:
@@ -83,7 +88,18 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 	today_utc_milli = int(today_utc.timestamp() * 1000)
 
 	for feed in _feed_list:
-		data = feedparser.parse(feed['feed_url'])
+		data = None
+		try:
+			data = feedparser.parse(feed['feed_url'])
+			if data.status == 403:
+				raise Exception("Cannot access RSS Feed: (403 Forbidden for URL)")
+			if data.status == 401:
+				raise Exception("Cannot access RSS Feed: (401 Unauthorized)")
+			if len(data.entries) == 0:
+				raise Exception("No entries found in parsed feed")
+		except Exception as ex:
+			print("*** " + env + " ERROR PARSING FEED: " + feed['feed_name'] + " FROM URL: " + feed['feed_url'], str(ex))
+			continue
 		article_count = 0
 		for item in data.entries:
 			yesterday = datetime.now() - timedelta(days = 3)
@@ -92,16 +108,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			tomorrow = datetime.now() + timedelta(days = 1)
 			tomorrow_utc = tomorrow.replace(tzinfo = timezone.utc)
 			tomorrow_utc_milli = int(tomorrow_utc.timestamp() * 1000)
-			language = "unk"
+			language = feed['language']
 			article_title = ""
-			
-			if hasattr(data["feed"], "language") and data["feed"]["language"] != "":
-				language = data["feed"]["language"]
-				
-			if "IDG Communications Media (AG)" in feed["publisher"]:
-				language = "ger"
-			if "Netherlands" in feed["publisher"]:
-				language = "NL"
 			
 			if hasattr(item, 'title'):
 				article_title = re.sub(r'[^\w\d\s\.\,\-\']','',item.title)		
@@ -273,7 +281,8 @@ def strip_characters(title):
 
 def main(_param_dictionary):
 	global env
-	env = _param_dictionary['env']
+	inputs = os.environ
+	env = inputs['env']
 	
 	for feed_item in _param_dictionary['feed_list']:
 		print("**** " + env + " **** PARSING FEED: ", feed_item['feed_name'])
@@ -282,8 +291,8 @@ def main(_param_dictionary):
 	todays_date_struct = time.strptime(datetime.today().strftime('%a, %d %b %Y'),'%a, %d %b %Y')
 	todays_date_pretty = time.strftime('%a, %d %b %Y', todays_date_struct)
 	
-	if _param_dictionary['sql_db_enabled']:
-		use_sql, already_ingested = get_ingested_articles(_param_dictionary['feed_list'],_param_dictionary['sql_db_url'],_param_dictionary['sql_db_apikey'])
+	if inputs['sql_db_enabled']:
+		use_sql, already_ingested = get_ingested_articles(_param_dictionary['feed_list'],inputs['sql_db_url'],inputs['sql_db_apikey'])
 	else:
 		use_sql = False
 		already_ingested = {}
@@ -291,39 +300,25 @@ def main(_param_dictionary):
 	
 	
 	parsed_feed_map = parse_feed(
-		_nlu_url = _param_dictionary['sentiment_url'],
-		_nlu_api_key = _param_dictionary['sentiment_apikey'],
-		_classify_id = _param_dictionary['nlc_id'],
-		_financial_classify_id = _param_dictionary['financial_classify_id'],
+		_nlu_url = inputs['sentiment_url'],
+		_nlu_api_key = inputs['sentiment_apikey'],
+		_classify_id = inputs['nlc_id'],
+		_financial_classify_id = inputs['financial_classify_id'],
 		_feed_list=_param_dictionary['feed_list'],     
 		_todays_date_struct = todays_date_struct,
 		_todays_date_pretty = todays_date_pretty,
 		_already_ingested = already_ingested,
 		_use_sql = use_sql,
-		translate_url = _param_dictionary["translate_url"],
-		translate_apikey = _param_dictionary["translate_apikey"]
+		translate_url = inputs["translate_url"],
+		translate_apikey = inputs["translate_apikey"]
 		)
 
 	parsed_feed = parsed_feed_map['article_map']
 	
-	URL = _param_dictionary["download_upload_url"]
+	URL = inputs["download_upload_url"]
 	headers = {"Content-Type":"application/json"}
 	data = {
-		'discovery_version': _param_dictionary['discovery_version'],
-		'discovery_url': _param_dictionary['discovery_url'],
-		'discovery_api_key': _param_dictionary['discovery_api_key'],
-		'collection_id': _param_dictionary['collection_id'],
-		'environment_id': _param_dictionary['environment_id'],
-		'sql_db_url':_param_dictionary['sql_db_url'],
-		'sql_db_apikey': _param_dictionary['sql_db_apikey'],
-		'sql_db_enabled': _param_dictionary['sql_db_enabled'],
-		'sentiment_url': _param_dictionary['sentiment_url'],
-		'sentiment_apikey': _param_dictionary['sentiment_apikey'],
-		'sentiment_model': _param_dictionary['sentiment_model'],
-		'translate_url': _param_dictionary["translate_url"],
-		'translate_apikey': _param_dictionary["translate_apikey"],
-		'parsed_feed': parsed_feed,
-		'env': _param_dictionary["env"]
+		'parsed_feed': parsed_feed
 	}
 	try:
 		r = requests.post(URL, headers=headers, json=data)
