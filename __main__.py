@@ -292,11 +292,7 @@ def main(_param_dictionary):
 	todays_date_struct = time.strptime(datetime.today().strftime('%a, %d %b %Y'),'%a, %d %b %Y')
 	todays_date_pretty = time.strftime('%a, %d %b %Y', todays_date_struct)
 	
-	if inputs['sql_db_enabled']:
-		use_sql, already_ingested = get_ingested_articles(_param_dictionary['feed_list'],inputs['sql_db_url'],inputs['sql_db_apikey'])
-	else:
-		use_sql = False
-		already_ingested = {}
+	use_sql, already_ingested = get_ingested_articles(_param_dictionary['feed_list'],inputs['sql_db_url'],inputs['sql_db_apikey'])
 	#print("**** " + env + " **** ALREADY INGESTED ARTICLES", already_ingested)
 	
 	
