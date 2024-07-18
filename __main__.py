@@ -30,7 +30,7 @@ def classify_text(nlu_url, nlu_apikey, classify_model, text):
 		return result_map
 	except Exception as ex:
 		print("*** " + env + " ERROR GETTING NLC SCORE:", str(ex))
-		print("*** " + env + " PROBLEM SENDING DATA:", data)
+		#print("*** " + env + " PROBLEM SENDING DATA:", data)
 		return None
 	
 
@@ -69,7 +69,7 @@ def translate_text(url, translate_apikey, language, text):
 		r.raise_for_status()
 		return r.json()["translations"][0]["text"]
 	except Exception as e:
-		print("*** " + env + " ERROR TRANSLATING TEXT", e)
+		print("*** " + env + " ERROR TRANSLATING TEXT:", str(e))
 		return ""
 
 
@@ -131,7 +131,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					
 					# Skip already ingested articles
 					skip = False
-					print("*** " + env + " CHECKING FEED AGAINST ALREADY INGESTED: ", feed['feed_name'], " NUMBER:", len(_already_ingested[feed['feed_name']]))
+					#print("*** " + env + " CHECKING FEED AGAINST ALREADY INGESTED: ", feed['feed_name'], " NUMBER:", len(_already_ingested[feed['feed_name']]))
 					for ingested_article in _already_ingested[feed['feed_name']]:
 						if strip_characters(article_title.lower()) == strip_characters(ingested_article['article_title'].lower()):
 							#print("*** " + env + " SKIPPING ITEM VS DB: ", item.title, " VS ", ingested_article['article_title'])
@@ -270,7 +270,7 @@ def get_ingested_articles(feed_list, url, apikey):
 			r.raise_for_status()
 			ingested_articles[feed['feed_name']] = r.json()
 		except Exception as ex:
-			print("*** " + env + " ERROR USING SQL DB ***")
+			print("*** " + env + " ERROR USING SQL DB ***", str(ex))
 			return False, {}
 	return True, ingested_articles
 	
