@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 import re
 import time
 import os
+import json
 
 # Third party imports
 import feedparser
@@ -285,10 +286,8 @@ def main(_param_dictionary):
 	inputs = os.environ
 	env = inputs['env']
 	
-	feed_names = ""
 	for feed_item in _param_dictionary['feed_list']:
 		print("**** " + env + " **** PARSING FEED: ", feed_item['feed_name'])
-		feed_names = feed_names + feed_item['feed_name'] +" "
 	
 	# We will use today's date as the pub_date
 	todays_date_struct = time.strptime(datetime.today().strftime('%a, %d %b %Y'),'%a, %d %b %Y')
@@ -319,27 +318,27 @@ def main(_param_dictionary):
 	data = {
 		'parsed_feed': parsed_feed
 	}
-	time_out = 5
-	attempts = 1
-	while True:
-		try:
-			r = requests.post(URL, headers=headers, json=data)
-			r.raise_for_status()
-		except Exception as ex:
-			if attempts > 2:
-				print("*** " + env + " ERROR CALLING DOWNLOAD-UPLOAD", str(ex))
-				break
-			else:
-				time.sleep(time_out)
-				time_out = time_out ** 2
-				attempts += 1
-				continue
+	#time_out = 5
+	#attempts = 1
+	#while True:
+	#	try:
+	#		r = requests.post(URL, headers=headers, json=data)
+	#		r.raise_for_status()
+	#	except Exception as ex:
+	#		if attempts > 2:
+	#			print("*** " + env + " ERROR CALLING DOWNLOAD-UPLOAD", str(ex))
+	#			break
+	#		else:
+	#			time.sleep(time_out)
+	#			time_out = time_out ** 2
+	#			attempts += 1
+	#			continue
 
 
 	return {
 		"headers": {
-			"Content-Type": "text/plain;charset=utf-8",
+			"Content-Type": "application/json",
 		},
 		"statusCode": 200,
-		"body": "Feed " + feed_names + " parsed and sent to download-upload"
+		"body": json.dumps(data)
 	}
