@@ -214,7 +214,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 						}
 					}
 				
-				if content in item:
+				if "content" in item:
 					article_map[file_name]["metadata"]["article_text"] = item.content[0].value
 				if "Dow Jones" in feed['publisher']:
 					if "advisor/articles" in item.link:
