@@ -90,6 +90,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 	today_utc_milli = int(today_utc.timestamp() * 1000)
 
 	for feed in _feed_list:
+		start_time = time.perf_counter_ns()
 		data = None
 		try:
 			data = feedparser.parse(feed['feed_url'])
@@ -222,7 +223,9 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				
 				if "Engadget" in feed['feed_name']:
 					article_map[file_name]["metadata"]["article_text"] = item.description
-				
+		
+		end_time = time.perf_counter_ns()
+		print("*** " + env + " TIME ELAPSED PARSING FEED: ", feed['feed_url'], str(start_time - end_time))
 	return {"article_map" : article_map }
 	
 	
