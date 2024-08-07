@@ -297,8 +297,11 @@ def main(_param_dictionary):
 	todays_date_struct = time.strptime(datetime.today().strftime('%a, %d %b %Y'),'%a, %d %b %Y')
 	todays_date_pretty = time.strftime('%a, %d %b %Y', todays_date_struct)
 	
+	start_time = time.perf_counter()
 	use_sql, already_ingested = get_ingested_articles(_param_dictionary['feed_list'],inputs['sql_db_url'],inputs['sql_db_apikey'])
 	#print("**** " + env + " **** ALREADY INGESTED ARTICLES", already_ingested)
+	end_time = time.perf_counter()
+	print("*** " + env + " TIME ELAPSED GATHERING INGESTED ARTICLES: ", str(end_time - start_time))
 	
 	
 	parsed_feed_map = parse_feed(
