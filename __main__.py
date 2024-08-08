@@ -127,7 +127,11 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				# Ensure Publish date is within 24 hours (past or future) of now, otherwise skip
 				if (hasattr(item, 'published') and (get_UTC_time(item.published) > yesterday_utc_milli and get_UTC_time(item.published) < tomorrow_utc_milli)) or not hasattr(item, 'published'):
 					# Translate title
+					tt_start = time.perf_counter()
 					article_title = translate_text(translate_url, translate_apikey, language, article_title)
+					if env == 'DEV':
+						tt_end = time.perf_counter()
+						print("*** " + env + " TIME ELAPSED TRANSLATING TITLE: ", article_title, str(tt_end - tt_start))
 					if article_title == "":
 						continue
 					
@@ -140,10 +144,12 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 							skip = True
 							break
 					if skip:
-						print("*** " + env + " SKIPPING ARTICLE USING DB: ", article_title, " FEED:", feed['feed_url'])
+						if env == 'DEV':
+							print("*** " + env + " SKIPPING ARTICLE USING DB: ", article_title, " FEED:", feed['feed_url'])
 						continue
 				else:
-					print("*** " + env + " SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, " FEED:", feed['feed_url'])
+					if env == 'DEV':
+						print("*** " + env + " SKIPPING ARTICLE DUE TO BAD PUBLISH DATE: ", article_title, " FEED:", feed['feed_url'])
 					continue
 			else:
 				print("*** " + env + " NOT USING DB")
@@ -170,6 +176,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 
 			if filter_by_title(file_name, True):
 				
+				ct_start = time.perf_counter()
 				class_map = {}
 				if "Dow Jones" in feed['publisher']:
 					if financial_blacklist(article_title):
@@ -180,6 +187,9 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
 				else:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
+				if env == 'DEV':
+						ct_end = time.perf_counter()
+						print("*** " + env + " TIME ELAPSED TRANSLATING TITLE: ", article_title, str(ct_end - ct_start))
 				
 				if not class_map:
 					negative_classifier = 1.0
