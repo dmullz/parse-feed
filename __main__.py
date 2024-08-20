@@ -358,7 +358,7 @@ def main(_param_dictionary):
 	#			attempts += 1
 	#			continue
 
-
+	print("**** " + env + " **** DONE PARSING FEED: " + feed_item['feed_name'] + " WITH ERROR PARSING: " + str(error_parsing))
 	return {
 		"headers": {
 			"Content-Type": "application/json",
