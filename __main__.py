@@ -88,6 +88,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 	today = datetime.now()
 	today_utc = today.replace(tzinfo = timezone.utc)
 	today_utc_milli = int(today_utc.timestamp() * 1000)
+	error_parsing = -1
 
 	for feed in _feed_list:
 		start_time = time.perf_counter()
@@ -95,13 +96,18 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 		try:
 			data = feedparser.parse(feed['feed_url'])
 			if data.status == 403:
+				error_parsing = 403
 				raise Exception("Cannot access RSS Feed: (403 Forbidden for URL)")
 			if data.status == 401:
+				error_parsing = 401
 				raise Exception("Cannot access RSS Feed: (401 Unauthorized)")
 			if len(data.entries) == 0:
+				error_parsing = 0
 				raise Exception("No entries found in parsed feed")
 		except Exception as ex:
 			print("*** " + env + " ERROR PARSING FEED: " + feed['feed_name'] + " FROM URL: " + feed['feed_url'], str(ex))
+			if error_parsing == -1:
+				error_parsing = 500
 			continue
 		article_count = 0
 		for item in data.entries:
@@ -189,7 +195,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
 				if env == 'DEV':
 						ct_end = time.perf_counter()
-						print("*** " + env + " TIME ELAPSED TRANSLATING TITLE: ", article_title, str(ct_end - ct_start))
+						print("*** " + env + " TIME ELAPSED CLASSIFYING TITLE: ", article_title, str(ct_end - ct_start))
 				
 				if not class_map:
 					negative_classifier = 1.0
@@ -236,7 +242,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 		
 		end_time = time.perf_counter()
 		print("*** " + env + " TIME ELAPSED PARSING FEED: ", feed['feed_url'], str(end_time - start_time))
-	return {"article_map" : article_map }
+	return {"article_map" : article_map }, error_parsing
 	
 	
 # @DEV: Return True if title contains blacklist terms, false otherwise
@@ -314,7 +320,7 @@ def main(_param_dictionary):
 	print("*** " + env + " TIME ELAPSED GATHERING INGESTED ARTICLES: ", str(end_time - start_time))
 	
 	
-	parsed_feed_map = parse_feed(
+	parsed_feed_map, error_parsing = parse_feed(
 		_nlu_url = inputs['sentiment_url'],
 		_nlu_api_key = inputs['sentiment_apikey'],
 		_classify_id = inputs['nlc_id'],
@@ -333,7 +339,8 @@ def main(_param_dictionary):
 	URL = inputs["download_upload_url"]
 	headers = {"Content-Type":"application/json"}
 	data = {
-		'parsed_feed': parsed_feed
+		'parsed_feed': parsed_feed,
+		'error_parsing' : error_parsing
 	}
 	#time_out = 5
 	#attempts = 1
