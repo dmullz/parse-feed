@@ -101,7 +101,10 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			if data.status == 401:
 				error_parsing = 401
 				raise Exception("Cannot access RSS Feed: (401 Unauthorized)")
-			if len(data.entries) == 0:
+			if data.status == 404:
+				error_parsing = 404
+				raise Exception("Cannot access RSS Feed: (404 Feed Not Found)")
+			if len(data.entries) == 0 and data.bozo == 1:
 				error_parsing = 0
 				raise Exception("No entries found in parsed feed")
 		except Exception as ex:
