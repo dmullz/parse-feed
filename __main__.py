@@ -114,7 +114,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			continue
 		article_count = 0
 		for item in data.entries:
-			yesterday = datetime.now() - timedelta(days = 3)
+			yesterday = datetime.now() - timedelta(days = 7)
 			yesterday_utc = yesterday.replace(tzinfo = timezone.utc)
 			yesterday_utc_milli = int(yesterday_utc.timestamp() * 1000)
 			tomorrow = datetime.now() + timedelta(days = 1)
@@ -280,10 +280,7 @@ def filter_by_title(title, swear_flag):
 # @DEV: Connect to SQL DB to get articles ingested in last 24 hours
 # @RET: Returns True if SQL query was successful, and returns object containing all articles ingested
 def get_ingested_articles(feed_list, url, apikey):
-	yesterday = datetime.now() - timedelta(days = 1)
-	yesterday_utc = yesterday.replace(tzinfo = timezone.utc)
-	yesterday_utc_milli = int(yesterday_utc.timestamp() * 1000)
-	past_day = datetime.now() - timedelta(days = 7)
+	past_day = datetime.now() - timedelta(days = 28)
 	past_day_utc = past_day.replace(tzinfo = timezone.utc)
 	past_day_utc_formatted = past_day_utc.strftime("%Y-%m-%d")
 	ingested_articles = {}
