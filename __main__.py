@@ -59,7 +59,7 @@ def translate_text(url, translate_apikey, language, text):
 	
 	data = {
 		"text": [text],
-		"source_lang": "DE",
+		"source_lang": language_mapping[language],
 		"target_lang": "EN-US"
 	}
 	headers = {
