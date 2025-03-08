@@ -85,7 +85,7 @@ def get_UTC_time(_date):
 
 # @DEV: Uses the feedparser library to extract all article URLs from an XML feed and return as a list.
 # @PARAM: _feed_list is a list of feeds to parse.
-def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, _feed_list=[]):
+def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _todays_date_pretty, _todays_date_struct, _already_ingested, _use_sql, translate_url, translate_apikey, inputs, _feed_list=[]):
 	article_map = {}
 	today = datetime.now()
 	today_utc = today.replace(tzinfo = timezone.utc)
@@ -95,8 +95,12 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 	for feed in _feed_list:
 		start_time = time.perf_counter()
 		data = None
+		feed_url = feed['feed_url']
+		if feed['publisher'] == "The New York Times":
+			url_split = feed_url.split('://')
+			feed_url = url_split[0] + "://" + inputs['The-New-York-Times-user'] + ":" + inputs['The-New-York-Times-pass'] + "@" + url_split[1]
 		try:
-			data = feedparser.parse(feed['feed_url'])
+			data = feedparser.parse(feed_url)
 			if data.status == 403:
 				error_parsing = 403
 				raise Exception("Cannot access RSS Feed: (403 Forbidden for URL)")
@@ -333,7 +337,8 @@ def main(_param_dictionary):
 		_already_ingested = already_ingested,
 		_use_sql = use_sql,
 		translate_url = inputs["translate_url"],
-		translate_apikey = inputs["translate_apikey"]
+		translate_apikey = inputs["translate_apikey"],
+		inputs = inputs
 		)
 
 	parsed_feed = parsed_feed_map['article_map']
