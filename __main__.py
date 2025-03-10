@@ -213,7 +213,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					negative_classifier = class_map['NEGATIVE']
 					lead_classifier = class_map['LEAD']
 
-				if not hasattr(item, 'published') or (hasattr(item, 'published') and get_UTC_time(item.published) > today_utc_milli):
+				if not hasattr(item, 'published') or len(item.published) < 1 or (hasattr(item, 'published') and get_UTC_time(item.published) > today_utc_milli):
 					article_map[file_name] = {
 						"metadata": {
 							"url":item.link,
