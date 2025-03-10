@@ -140,7 +140,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				
 			if _use_sql:
 				# Ensure Publish date is within 24 hours (past or future) of now, otherwise skip
-				if (hasattr(item, 'published') and (get_UTC_time(item.published) > yesterday_utc_milli and get_UTC_time(item.published) < tomorrow_utc_milli)) or not hasattr(item, 'published'):
+				if (hasattr(item, 'published') and item.published and (get_UTC_time(item.published) > yesterday_utc_milli and get_UTC_time(item.published) < tomorrow_utc_milli)) or (not hasattr(item, 'published') or not item.published):
 					# Translate title
 					tt_start = time.perf_counter()
 					article_title = translate_text(translate_url, translate_apikey, language, article_title)
