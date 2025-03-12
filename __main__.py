@@ -193,6 +193,15 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				
 				ct_start = time.perf_counter()
 				class_map = {}
+				
+				if "New York Times" in feed['publisher']:
+					if "ncr_firstparagraph" in item:
+						if len(item.ncr_firstparagraph) < 10:
+							print("*** " + env + " SKIPPING EMPTY NYT ARTICLE: ", article_title, " FEED:", feed['feed_url'])
+							continue
+					else:
+						print("*** " + env + " SKIPPING EMPTY NYT ARTICLE: ", article_title, " FEED:", feed['feed_url'])
+						continue
 				if "Dow Jones" in feed['publisher']:
 					if financial_blacklist(article_title):
 						continue
