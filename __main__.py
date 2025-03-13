@@ -259,6 +259,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					article_map[file_name]["metadata"]["article_text"] = item.description
 				if "ncr_firstparagraph" in item:
 					article_map[file_name]["metadata"]["article_text"] = item.ncr_firstparagraph
+					if "guid" in item:
+						article_map[file_name]["metadata"]["url"] = item.guid
 		
 		end_time = time.perf_counter()
 		print("*** " + env + " TIME ELAPSED PARSING FEED: ", feed['feed_url'], str(end_time - start_time))
