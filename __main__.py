@@ -148,6 +148,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 						tt_end = time.perf_counter()
 						print("*** " + env + " TIME ELAPSED TRANSLATING TITLE: ", article_title, str(tt_end - tt_start))
 					if article_title == "":
+						print("*** " + env + " ERROR TRANSLATING TITLE: ", re.sub(r'[^\w\d\s\.\,\-\']','',item.title), " FEED:", feed['feed_url'])
 						continue
 					
 					# Skip already ingested articles
@@ -218,6 +219,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				if not class_map:
 					negative_classifier = 1.0
 					lead_classifier = 0.0
+					print("*** " + env + " UNABLE TO CLASSIFY ARTICLE TITLE: ", article_title, " FEED:", feed['feed_url'])
 				else:
 					negative_classifier = class_map['NEGATIVE']
 					lead_classifier = class_map['LEAD']
