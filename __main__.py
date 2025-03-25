@@ -6,6 +6,7 @@ import re
 import time
 import os
 import json
+import random
 
 # Third party imports
 import feedparser
@@ -23,6 +24,7 @@ def classify_text(nlu_url, nlu_apikey, classify_model, text):
 				"classifications":{
 					"model":classify_model}}}
 	result_map = {}
+	r = None
 	try:
 		r = requests.post(URL, auth=("apikey",nlu_apikey), headers=headers, json=data)
 		r.raise_for_status()
@@ -30,9 +32,19 @@ def classify_text(nlu_url, nlu_apikey, classify_model, text):
 			result_map[class_found['class_name']] = class_found['confidence']
 		return result_map
 	except Exception as ex:
-		print("*** " + env + " ERROR GETTING NLC SCORE:", str(ex))
-		#print("*** " + env + " PROBLEM SENDING DATA:", data)
-		return None
+		if r.status_code == 422:
+			return None
+		time.sleep(random.randint(1,5))
+		try:
+			r = requests.post(URL, auth=("apikey",nlu_apikey), headers=headers, json=data)
+			r.raise_for_status()
+			for class_found in r.json()["classifications"]:
+				result_map[class_found['class_name']] = class_found['confidence']
+			return result_map
+		except Exception as ex2:
+			print("*** " + env + " ERROR GETTING NLC SCORE:", str(ex2))
+			#print("*** " + env + " PROBLEM SENDING DATA:", data)
+			return None
 	
 
 def translate_text(url, translate_apikey, language, text):
@@ -67,13 +79,20 @@ def translate_text(url, translate_apikey, language, text):
 		"Content-Type": "application/json"
 	}
 	try:
-		r = requests.post(url, headers=headers, json=data)
+		r = requests.post(url, headers=headers, json=data, timeout=10)
 		
 		r.raise_for_status()
 		return r.json()["translations"][0]["text"]
 	except Exception as e:
-		print("*** " + env + " ERROR TRANSLATING TEXT:", str(e))
-		return ""
+		time.sleep(random.randint(1,5))
+		try:
+			r = requests.post(url, headers=headers, json=data, timeout=10)
+			
+			r.raise_for_status()
+			return r.json()["translations"][0]["text"]
+		except Exception as ex:
+			print("*** " + env + " ERROR TRANSLATING TEXT:", str(ex))
+			return ""
 
 
 # @DEV: Takes a date string and converts it to central time stamp in miliseconds
