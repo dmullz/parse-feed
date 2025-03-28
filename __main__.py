@@ -149,7 +149,9 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			article_title = ""
 			
 			if hasattr(item, 'title'):
-				article_title = re.sub(r'[^\w\d\s\.\,\-\']','',item.title)		
+				article_title = re.sub(r'[^\w\d\s\.\,\-\']','',item.title)
+				if article_title == "":
+					continue
 			else:
 				continue
 				
