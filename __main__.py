@@ -149,7 +149,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			article_title = ""
 			
 			if hasattr(item, 'title'):
-				article_title = re.sub(r'[^\w\d\s\.\,\-\']','',item.title)
+				article_title = re.sub(r'[^\w\d\s\.\,\-]','',item.title)
 				if article_title == "":
 					continue
 			else:
@@ -164,12 +164,12 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 				if (hasattr(item, 'published') and len(item.published) > 0 and (get_UTC_time(item.published) > yesterday_utc_milli and get_UTC_time(item.published) < tomorrow_utc_milli)) or (not hasattr(item, 'published') or len(item.published) < 1):
 					# Translate title
 					tt_start = time.perf_counter()
-					article_title = translate_text(translate_url, translate_apikey, language, article_title)
+					article_title = re.sub(r'[^\w\d\s\.\,\-]','',translate_text(translate_url, translate_apikey, language, article_title))
 					if env == 'DEV':
 						tt_end = time.perf_counter()
 						print("*** " + env + " TIME ELAPSED TRANSLATING TITLE: ", article_title, str(tt_end - tt_start))
 					if article_title == "":
-						print("*** " + env + " ERROR TRANSLATING TITLE: ", re.sub(r'[^\w\d\s\.\,\-\']','',item.title), " FEED:", feed['feed_url'])
+						print("*** " + env + " ERROR TRANSLATING TITLE: ", re.sub(r'[^\w\d\s\.\,\-]','',item.title), " FEED:", feed['feed_url'])
 						continue
 					
 					# Skip already ingested articles
