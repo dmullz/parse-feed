@@ -206,10 +206,11 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 			#find a file name
 			split_url = item.link.split('/')
 			counter = -1
-			file_name = split_url[counter]
-			while not file_name:
-				counter -= 1
-				file_name = split_url[counter]
+			file_name = article_title
+			#file_name = split_url[counter]
+			#while not file_name:
+			#	counter -= 1
+			#	file_name = split_url[counter]
 
 			if filter_by_title(file_name, True):
 				
