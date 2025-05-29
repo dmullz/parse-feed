@@ -115,11 +115,14 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 		start_time = time.perf_counter()
 		data = None
 		feed_url = feed['feed_url']
+		agent="wrights-media-rss"
 		if feed['publisher'] == "The New York Times":
 			url_split = feed_url.split('://')
 			feed_url = url_split[0] + "://" + inputs['The-New-York-Times-user'] + ":" + inputs['The-New-York-Times-pass'] + "@" + url_split[1]
+		if feed['feed_name'] == "The Knot":
+			agent = None
 		try:
-			data = feedparser.parse(feed_url, agent="wrights-media-rss")
+			data = feedparser.parse(feed_url, agent=agent)
 			if data.status == 403:
 				error_parsing = 403
 				raise Exception("Cannot access RSS Feed: (403 Forbidden for URL)")
