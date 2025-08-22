@@ -186,6 +186,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					if skip:
 						if env == 'DEV':
 							print("*** " + env + " SKIPPING ARTICLE USING DB: ", article_title, " FEED:", feed['feed_url'])
+						if "en" not in language and "unk" not in language and language != "":
+							break
 						continue
 				else:
 					if env == 'DEV':
