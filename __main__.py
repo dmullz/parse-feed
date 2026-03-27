@@ -186,7 +186,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					if skip:
 						if env == 'DEV':
 							print("*** " + env + " SKIPPING ARTICLE USING DB: ", article_title, " FEED:", feed['feed_url'])
-						if "en" not in language and "unk" not in language and language != "":
+						if "en" not in language and language != "":
 							break
 						continue
 				else:
@@ -236,6 +236,8 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					else:
 						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
 				elif "Arena Group" in feed['publisher'] and "TheStreet" in feed['feed_name']:
+					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+				elif "Yahoo Finance Videos" in feed['feed_name']:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
 				else:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
