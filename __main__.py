@@ -230,14 +230,14 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					else:
 						print("*** " + env + " SKIPPING EMPTY NYT ARTICLE: ", article_title, " FEED:", feed['feed_url'])
 						continue
-				if "Dow Jones" in feed['publisher']:
+				if "Dow Jones" in feed['publisher'] or "Arizent" in feed['publisher']:
 					if financial_blacklist(article_title):
 						continue
 					else:
 						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
-				elif "Arena Group" in feed['publisher'] and "TheStreet" in feed['feed_name']:
+				elif "Arena Group" in feed['publisher'] and "theStreet" in feed['feed_name']:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
-				elif "Yahoo Finance Videos" in feed['feed_name']:
+				elif "Yahoo Finance" in feed['feed_name']:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
 				else:
 					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
