@@ -230,7 +230,7 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					else:
 						print("*** " + env + " SKIPPING EMPTY NYT ARTICLE: ", article_title, " FEED:", feed['feed_url'])
 						continue
-				if "Dow Jones" in feed['publisher'] or "Arizent" in feed['publisher'] or "Middle Market Information" in feed['publisher'] or "Bankrate" in feed['publisher']:
+				if "Dow Jones" in feed['publisher'] or "Arizent" in feed['publisher'] or "Middle Market Information" in feed['publisher'] or "Bankrate" in feed['publisher'] or "Hearst Newspapers" in feed['publisher']:
 					if financial_blacklist(article_title):
 						continue
 					else:
