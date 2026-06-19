@@ -230,28 +230,33 @@ def parse_feed(_nlu_url,_nlu_api_key,_classify_id,_financial_classify_id, _today
 					else:
 						print("*** " + env + " SKIPPING EMPTY NYT ARTICLE: ", article_title, " FEED:", feed['feed_url'])
 						continue
-				if "Dow Jones" in feed['publisher'] or "Arizent" in feed['publisher'] or "Middle Market Information" in feed['publisher'] or "Bankrate" in feed['publisher'] or "Hearst Newspapers" in feed['publisher']:
-					if financial_blacklist(article_title):
-						continue
-					else:
-						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
-				elif "Arena Group" in feed['publisher'] and "theStreet" in feed['feed_name']:
-					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
-				elif "Yahoo Finance" in feed['feed_name'] or "Sportico" in feed['feed_name']:
-					class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
-				else:
-					class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
-				if env == 'DEV':
-						ct_end = time.perf_counter()
-						print("*** " + env + " TIME ELAPSED CLASSIFYING TITLE: ", article_title, str(ct_end - ct_start))
-				
-				if not class_map:
+						
+				if score_store_names(article_title):
 					negative_classifier = 1.0
 					lead_classifier = 0.0
-					print("*** " + env + " UNABLE TO CLASSIFY ARTICLE TITLE: ", article_title, " FEED:", feed['feed_url'])
 				else:
-					negative_classifier = class_map['NEGATIVE']
-					lead_classifier = class_map['LEAD']
+					if "Dow Jones" in feed['publisher'] or "Arizent" in feed['publisher'] or "Middle Market Information" in feed['publisher'] or "Bankrate" in feed['publisher'] or "Hearst Newspapers" in feed['publisher']:
+						if financial_blacklist(article_title):
+							continue
+						else:
+							class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+					elif "Arena Group" in feed['publisher'] and "theStreet" in feed['feed_name']:
+						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+					elif "Yahoo Finance" in feed['feed_name'] or "Sportico" in feed['feed_name']:
+						class_map = classify_text(_nlu_url, _nlu_api_key, _financial_classify_id, article_title)
+					else:
+						class_map = classify_text(_nlu_url, _nlu_api_key, _classify_id, article_title)
+					if env == 'DEV':
+							ct_end = time.perf_counter()
+							print("*** " + env + " TIME ELAPSED CLASSIFYING TITLE: ", article_title, str(ct_end - ct_start))
+					
+					if not class_map:
+						negative_classifier = 1.0
+						lead_classifier = 0.0
+						print("*** " + env + " UNABLE TO CLASSIFY ARTICLE TITLE: ", article_title, " FEED:", feed['feed_url'])
+					else:
+						negative_classifier = class_map['NEGATIVE']
+						lead_classifier = class_map['LEAD']
 
 				if not hasattr(item, 'published') or len(item.published) < 1 or (hasattr(item, 'published') and get_UTC_time(item.published) > today_utc_milli):
 					article_map[file_name] = {
@@ -307,6 +312,16 @@ def financial_blacklist(title):
 			print("*** " + env + " SKIPPING ARTICLE USING FINANCIAL BLACKLIST: ", title)
 			return True
 	return False
+	
+
+def score_store_names(title):
+	filtered_regexes = [r"\bamazon",r"\bwalmart",r"\bcostco",r"\bnordstrom",r"\bikea",r"\bfive below",r"\bkohl",r"\bsephora",r"\btarget",r"\bwayfair",r"\baldi",r"\brei",r"\banthropology",r"\bold navy"]
+	for r in filtered_regexes:
+		if re.search(r,title):
+			print("*** " + env + " SCORING ARTICLE USING STORE NAME FILTER: ", title)
+			return True
+	return False
+
 
 # @DEV: Filter the articles by their title. It should be passed a title and a Boolean to use a swear word filter or not. 
 # It will return True or False (False if it should be filtered out, True if not).
