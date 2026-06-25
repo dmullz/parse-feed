@@ -317,7 +317,7 @@ def financial_blacklist(title):
 def score_store_names(title):
 	filtered_regexes = [r"\bamazon",r"\bwalmart",r"\bcostco",r"\bnordstrom",r"\bikea",r"\bfive below",r"\bkohl",r"\bsephora",r"\btarget",r"\bwayfair",r"\baldi",r"\brei",r"\banthropology",r"\bold navy"]
 	for r in filtered_regexes:
-		if re.search(r,title):
+		if re.search(r,title.lower()):
 			print("*** " + env + " SCORING ARTICLE USING STORE NAME FILTER: ", title)
 			return True
 	return False
