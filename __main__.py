@@ -49,6 +49,9 @@ def classify_text(nlu_url, nlu_apikey, classify_model, text):
 
 def translate_text(url, translate_apikey, language, text):
 
+	#Short circuit translation for now as it is turned off
+	return text
+	
 	if "en" in language or "unk" in language:
 		return text
 		
